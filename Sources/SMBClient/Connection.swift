@@ -1,5 +1,11 @@
 import Foundation
 import Network
+#if DEBUG
+import OSLog
+
+@available(macOS 11.0, *)
+private let logger = Logger(subsystem: "SMBClient", category: "connection")
+#endif
 
 public class Connection {
   let host: String
@@ -37,6 +43,26 @@ public class Connection {
   public func connect() async throws {
     return try await withCheckedThrowingContinuation { (continuation) in
       connection.stateUpdateHandler = { (state) in
+#if DEBUG
+        if #available(macOS 11.0, *) {
+          switch state {
+          case .setup:
+            logger.debug("Connection: setup")
+          case .waiting(let error):
+            logger.debug("Connection: waiting (\(error))")
+          case .preparing:
+            logger.debug("Connection: preparing")
+          case .ready:
+            logger.debug("Connection: ready")
+          case .failed(let error):
+            logger.debug("Connection: failed(\(error))")
+          case .cancelled:
+            logger.debug("Connection: cancelled")
+          @unknown default:
+            logger.debug("Connection: unknown")
+          }
+        }
+#endif
         switch state {
         case .setup, .preparing:
           break
@@ -62,6 +88,26 @@ public class Connection {
 
     @Sendable
     func stateUpdateHandler(_ state: NWConnection.State) {
+#if DEBUG
+      if #available(macOS 11.0, *) {
+        switch state {
+        case .setup:
+          logger.debug("Connection: setup")
+        case .waiting(let error):
+          logger.debug("Connection: waiting (\(error))")
+        case .preparing:
+          logger.debug("Connection: preparing")
+        case .ready:
+          logger.debug("Connection: ready")
+        case .failed(let error):
+          logger.debug("Connection: failed(\(error))")
+        case .cancelled:
+          logger.debug("Connection: cancelled")
+        @unknown default:
+          logger.debug("Connection: unknown")
+        }
+      }
+#endif
       switch state {
       case .waiting(let error), .failed(let error):
         onDisconnected(error)
@@ -93,6 +139,10 @@ public class Connection {
       throw ConnectionError.cancelled
     @unknown default:
       throw ConnectionError.unknown
+    }
+
+    if #available(macOS 11.0, *) {
+      logger.debug("\u{2B06}\u{FE0F} \(Header(data: data[..<64]).debugDescription, privacy: .public)")
     }
 
     let transportPacket = DirectTCPPacket(smb2Message: data)
@@ -164,8 +214,15 @@ public class Connection {
               .moreProcessingRequired,
               .noMoreFiles,
               .endOfFile:
+
+              if #available(macOS 11.0, *) {
+                logger.debug("\u{2B07}\u{FE0F}\u{2705} \(Header(data: data[..<64]).debugDescription, privacy: .public)")
+              }
               response += data
             case .pending:
+              if #available(macOS 11.0, *) {
+                logger.debug("\u{2B07}\u{FE0F}\u{23F8}\u{FE0F}")
+              }
               if self.buffer.count > 0 {
                 let transportPacket = DirectTCPPacket(response: self.buffer)
                 let length = Int(transportPacket.protocolLength)
@@ -188,8 +245,14 @@ public class Connection {
                   .noMoreFiles,
                   .endOfFile:
                   response += data
+                  if #available(macOS 11.0, *) {
+                    logger.debug("\u{2B07}\u{FE0F}\u{2705} \(Header(data: data[..<64]).debugDescription, privacy: .public)")
+                  }
                   break
                 default:
+                  if #available(macOS 11.0, *) {
+                    logger.debug("\u{2B07}\u{FE0F}\u{26D4}\u{FE0F} \(Header(data: data[..<64]).debugDescription, privacy: .public)")
+                  }
                   completion(.failure(ErrorResponse(data: data)))
                   return
                 }
@@ -198,6 +261,9 @@ public class Connection {
                 return
               }
             default:
+              if #available(macOS 11.0, *) {
+                logger.debug("\u{2B07}\u{FE0F}\u{26D4}\u{FE0F} \(Header(data: data[..<64]).debugDescription, privacy: .public)")
+              }
               completion(.failure(ErrorResponse(data: Data(data[offset...]))))
               return
             }
